@@ -1,27 +1,33 @@
-import os
 import pandas as pd
 import joblib
 
-def predict_and_save():
-    # Load cleaned test data
-    test = pd.read_csv("data/processed/test_clean.csv", index_col=0)
+def main():
+    print("📦 Loading model...")
+    model = joblib.load("models/best_model.pkl")
 
-    # Load trained pipeline
-    model = joblib.load("models/model.pkl")
+    print("📄 Loading test and train column reference...")
+    df_test = pd.read_csv("data/processed/test_grouped.csv", index_col=0)
+    df_train = pd.read_csv("data/processed/train_grouped.csv", index_col=0)
 
-    # Predict
-    print("🔍 Running inference...")
-    preds = model.predict(test)
+    # Get expected feature columns (excluding target)
+    expected_features = df_train.drop(columns=["efficiency"]).columns.tolist()
 
-    # Create submission DataFrame
+    print("🧼 Aligning test columns...")
+    for col in expected_features:
+        if col not in df_test.columns:
+            df_test[col] = 0.0  # or df_test[col] = df_test[col].mean() if you prefer
+
+    df_test = df_test[expected_features]  # exact column order match
+
+    print("🔮 Making predictions...")
+    preds = model.predict(df_test)
+
     submission = pd.DataFrame({
-        "id": test.index,
+        "id": df_test.index,
         "efficiency": preds
     })
-
-    os.makedirs("outputs", exist_ok=True)
     submission.to_csv("outputs/submission.csv", index=False)
-    print("✅ Submission saved to outputs/submission.csv")
+    print("✅ Saved submission.csv")
 
 if __name__ == "__main__":
-    predict_and_save()
+    main()
