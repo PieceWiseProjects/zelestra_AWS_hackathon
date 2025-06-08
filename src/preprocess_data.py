@@ -1,21 +1,17 @@
 import os
+
+import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OrdinalEncoder
 
+# Column groups
 NUMERIC_OBJECTS = ["humidity", "wind_speed", "pressure"]
 NUMERIC_FEATURES = [
     "temperature", "irradiance", "panel_age", "maintenance_count",
     "soiling_ratio", "voltage", "current", "module_temperature", "cloud_coverage"
 ]
 CATEGORICAL_FEATURES = ["string_id", "error_code", "installation_type"]
-
-DERIVED_FEATURES = {
-    "power_output": lambda df: df["voltage"] * df["current"],
-    "temp_diff": lambda df: df["module_temperature"] - df["temperature"],
-    "soiled_irradiance": lambda df: df["irradiance"] * (1 - df["soiling_ratio"]),
-    "has_error": lambda df: df["error_code"].notnull().astype(int),
-}
 
 
 def convert_numeric_objects(df):
@@ -24,19 +20,13 @@ def convert_numeric_objects(df):
     return df
 
 
-def add_derived_features(df):
-    for name, func in DERIVED_FEATURES.items():
-        df[name] = func(df)
-    return df
-
-
-def impute_and_encode(df, is_train=True, encoders=None, imputers=None):
+def impute_and_encode(df, is_train=True, imputers=None, encoders=None):
     df = df.copy()
+    if imputers is None: imputers = {}
+    if encoders is None: encoders = {}
 
     # Impute numeric
-    if imputers is None:
-        imputers = {}
-    for col in NUMERIC_OBJECTS + NUMERIC_FEATURES:
+    for col in df.select_dtypes(include="number").columns:
         if is_train:
             imputer = SimpleImputer(strategy="median")
             df[col] = imputer.fit_transform(df[[col]])
@@ -44,20 +34,27 @@ def impute_and_encode(df, is_train=True, encoders=None, imputers=None):
         else:
             df[col] = imputers[col].transform(df[[col]])
 
-    # Impute + encode categorical
-    if encoders is None:
-        encoders = {}
-    for col in CATEGORICAL_FEATURES:
-        if is_train:
-            df[col] = df[col].fillna("missing")
-            encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
-            df[[col]] = encoder.fit_transform(df[[col]])
-            encoders[col] = encoder
-        else:
-            df[col] = df[col].fillna("missing")
-            df[[col]] = encoders[col].transform(df[[col]])
+    # Impute + encode categoricals
+    cat_cols = CATEGORICAL_FEATURES
+    for col in cat_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str).fillna("missing")
+            if is_train:
+                encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+                df[[col]] = encoder.fit_transform(df[[col]])
+                encoders[col] = encoder
+            else:
+                df[[col]] = encoders[col].transform(df[[col]])
 
     return df, imputers, encoders
+
+
+def drop_highly_correlated(df, threshold=0.76):
+    corr = df.corr().abs()
+    upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+    to_drop = [col for col in upper.columns if any(upper[col] > threshold)]
+    print(f"📉 Dropping {len(to_drop)} highly correlated features: {to_drop}")
+    return df.drop(columns=to_drop), to_drop
 
 
 def preprocess_and_save():
@@ -66,21 +63,21 @@ def preprocess_and_save():
     train = pd.read_csv("data/raw/train.csv", index_col=0)
     test = pd.read_csv("data/raw/test.csv", index_col=0)
 
-    # Step 1: convert object-like numerics
+    # Basic cleanup
     train = convert_numeric_objects(train)
     test = convert_numeric_objects(test)
 
-    # Step 2: feature engineering
-    train = add_derived_features(train)
-    test = add_derived_features(test)
+    # Final encoding/imputation
+    train, imputers, encoders = impute_and_encode(train, is_train=True)
+    test, _, _ = impute_and_encode(test, is_train=False, imputers=imputers, encoders=encoders)
 
-    # Step 3: impute and encode
-    train_clean, imputers, encoders = impute_and_encode(train, is_train=True)
-    test_clean, _, _ = impute_and_encode(test, is_train=False, imputers=imputers, encoders=encoders)
+    # Drop correlated features
+    train, dropped = drop_highly_correlated(train)
+    test = test.drop(columns=dropped, errors="ignore")
 
     # Save
-    train_clean.to_csv("data/processed/train_clean.csv")
-    test_clean.to_csv("data/processed/test_clean.csv")
+    train.to_csv("data/processed/train_clean.csv")
+    test.to_csv("data/processed/test_clean.csv")
     print("✅ Saved processed data to data/processed/")
 
 

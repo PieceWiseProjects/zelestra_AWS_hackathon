@@ -20,7 +20,7 @@ def load_data(path):
 def cross_validate(name, model, X, y):
     print(f"\n🚀 Training {name}...")
 
-    kf = KFold(n_splits=3, shuffle=True, random_state=42)
+    kf = KFold(n_splits=4, shuffle=True, random_state=42)
     rmses = []
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(X)):
@@ -39,24 +39,24 @@ def cross_validate(name, model, X, y):
 
 def get_models():
     return {
-        "RandomForest": RandomForestRegressor(
-            n_estimators=300,
-            n_jobs=-1,
-            max_depth=12,
-            random_state=42
-        ),
-        "LightGBM": LGBMRegressor(
-            n_estimators=800,
-            learning_rate=0.03,
-            num_leaves=31,
-            device="gpu",
-            gpu_use_dp=False,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=42
-        ),
+        # "RandomForest": RandomForestRegressor(
+        #     n_estimators=1000,
+        #     n_jobs=-1,
+        #     max_depth=12,
+        #     random_state=42
+        # ),
+        # "LightGBM": LGBMRegressor(
+        #     n_estimators=1000,
+        #     learning_rate=0.03,
+        #     num_leaves=31,
+        #     device="gpu",
+        #     gpu_use_dp=False,
+        #     subsample=0.8,
+        #     colsample_bytree=0.8,
+        #     random_state=42
+        # ),
         "CatBoost": CatBoostRegressor(
-            iterations=800,
+            iterations=1000,
             learning_rate=0.03,
             depth=6,
             task_type="GPU",
